@@ -1,0 +1,7 @@
+arpack-ng
+build
+local
+makedir-test/*.c
+makedir-test/*.cpp
+makedir-test/*.exe
+makedir-test/*.log
