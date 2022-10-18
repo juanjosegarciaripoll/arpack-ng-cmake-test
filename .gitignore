@@ -5,3 +5,6 @@ makedir-test/*.c
 makedir-test/*.cpp
 makedir-test/*.exe
 makedir-test/*.log
+cmake-test/*.c
+cmake-test/*.cpp
+build-arpack

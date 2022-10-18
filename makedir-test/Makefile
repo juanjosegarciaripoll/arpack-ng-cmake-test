@@ -21,4 +21,4 @@ icb_arpack_c.c: ../arpack-ng/TESTS/icb_arpack_c.c
 	cp $< $@
 
 clean:
-	rm -f *.exe *.log
+	rm -f *.exe *.log *.c *.cpp
