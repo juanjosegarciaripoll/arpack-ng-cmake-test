@@ -1,8 +1,8 @@
 #!/bin/sh
 branch="cmake"
 prefix=`pwd`/local
-#rm -rf build build-arpack local
-rm -rf  build-cmake-test
+rm -rf build build-arpack local build-cmake-test
+#rm -rf  build-cmake-test
 if [ ! -d $prefix/lib ]; then
 	if [ ! -d arpack-ng ]; then
 		git clone https://github.com/juanjosegarciaripoll/arpack-ng.git
@@ -14,8 +14,6 @@ if [ ! -d $prefix/lib ]; then
 	cmake --build build-arpack
 	cmake --install build-arpack
 fi
-#cat arpack-ng/TESTS/icb_arpack_c.c | sed 's,#include ",#include "arpack-ng/,g' > cmake-test/icb_arpack_c.c
-#cat arpack-ng/TESTS/icb_arpack_cpp.cpp | sed 's,#include ",#include "arpack-ng/,g' > cmake-test/icb_arpack_cpp.cpp
 cp arpack-ng/TESTS/icb_arpack_c.c cmake-test/icb_arpack_c.c
 cp arpack-ng/TESTS/icb_arpack_cpp.cpp cmake-test/icb_arpack_cpp.cpp
 rm -rf build-cmake-test
