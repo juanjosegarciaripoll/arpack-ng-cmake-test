@@ -2,7 +2,6 @@
 branch="cmake"
 prefix=`pwd`/local
 rm -rf build build-arpack local build-cmake-test
-#rm -rf  build-cmake-test
 if [ ! -d $prefix/lib ]; then
 	if [ ! -d arpack-ng ]; then
 		git clone https://github.com/juanjosegarciaripoll/arpack-ng.git
@@ -17,7 +16,7 @@ fi
 cp arpack-ng/TESTS/icb_arpack_c.c cmake-test/icb_arpack_c.c
 cp arpack-ng/TESTS/icb_arpack_cpp.cpp cmake-test/icb_arpack_cpp.cpp
 rm -rf build-cmake-test
-cmake -S cmake-test -B build-cmake-test -G "Unix Makefiles" -D CMAKE_PREFIX_PATH="$prefix/lib/cmake/arpack-ng"
+cmake -S cmake-test -B build-cmake-test -G "Unix Makefiles" -D CMAKE_PREFIX_PATH="$prefix"
 cmake --build build-cmake-test
 if ./build-cmake-test/icb_arpack_c 2>&1 >build-cmake-test/icb_arpack_c.log; then
 	echo Succeeded icb_arpack_c
