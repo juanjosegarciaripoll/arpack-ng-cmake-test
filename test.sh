@@ -2,6 +2,7 @@
 set -x
 branch="cmake"
 prefix=`pwd`/local
+python=no
 which=new
 static=no
 cmake_generator="Unix Makefiles"
@@ -23,6 +24,12 @@ while [ -n "$1" ]; do
 			shift;;
 		dynamic)
 			static=no
+			shift;;
+		nopython)
+			python=no
+			shift;;
+		python)
+			python=yes
 			shift;;
 		*)
 			echo Uknown option $1
@@ -57,22 +64,33 @@ if [ ! -d $arpack_source ]; then
 	git checkout --track origin/$branch
 fi
 
-if [ ! -d $prefix/include/boost* ]; then
-	# This is needed to link to python on Debian
-	if [ "x" = "y" ] ; then
-		sudo apt-get update
-		sudo apt-get install -y gfortran gcc g++ openmpi-bin libopenmpi-dev libblas-dev liblapack-dev cmake libeigen3-dev
-		sudo apt-get -y install python3-minimal python3-pip python3-numpy
-		sudo apt-get -y install wget
-	fi
-	if [ ! -d $prefix/include/boost ]; then
-		cd build &&
-		wget https://sourceforge.net/projects/boost/files/boost/1.79.0/boost_1_79_0.tar.gz && \
-		tar -xf boost_1_79_0.tar.gz && \
-		(cd boost_1_79_0 && \
-		./bootstrap.sh --with-libraries=python --with-python=/usr/bin/python3 --with-toolset=gcc && \
-		./b2 toolset=gcc --prefix=$prefix install) && \
-		rm -rf boost_1_79_0
+if [ $python = no ]; then
+	ARPACK_CMAKE_FLAGS=$ARPACK_CMAKE_FLAGS -DPYTHON3=OFF
+else
+	ARPACK_CMAKE_FLAGS=$ARPACK_CMAKE_FLAGS -DPYTHON3=ON
+	if [ ! -d $prefix/include/boost* ]; then
+		# This is needed to link to python on Debian
+		if [ "x" = "y" ] ; then
+			sudo apt-get update
+			sudo apt-get install -y gfortran gcc g++ openmpi-bin libopenmpi-dev libopenblas-dev liblapack-dev cmake libeigen3-dev
+			sudo apt-get -y install python3-minimal python3-pip python3-numpy
+			sudo apt-get -y install wget
+		fi
+		if [ ! -d $prefix/include/boost ]; then
+			if (cd build &&
+					wget https://sourceforge.net/projects/boost/files/boost/1.79.0/boost_1_79_0.tar.gz && \
+						tar -xf boost_1_79_0.tar.gz && \
+						(cd boost_1_79_0 && \
+							 ./bootstrap.sh --with-libraries=python --with-python=/usr/bin/python3 --with-toolset=gcc && \
+							 ./b2 toolset=gcc --prefix=$prefix install) && \
+						rm -rf boost_1_79_0); then
+				echo Succeeded installing Boost
+			else
+				echo Failed installing Boost
+				rm -rf build/boost_1_79*
+				exit -1
+			fi
+		fi
 	fi
 fi
 
@@ -80,7 +98,7 @@ if (rm -rf $arpack_build && \
 		mkdir -p $arpack_build && \
 		cd $arpack_build && \
 		cmake -S $arpack_source -B . -DCMAKE_INSTALL_PREFIX="$prefix"\
- 			  -G "$cmake_generator" -DICB=ON -DICBEXMM=ON -DPYTHON3=ON \
+ 			  -G "$cmake_generator" -DICB=ON -DICBEXMM=ON \
 			  $ARPACK_CMAKE_FLAGS && \
 		cmake --build . -j 6 && \
 		cmake --install .); then
