@@ -16,7 +16,8 @@ while [ -n "$1" ]; do
 			shift;;
 		clean)
 			rm -rf build/* cmake-test/*.{c,cpp,log} makedir-test/*.{c,cpp,log}
-			exit 0;;
+			rm -rf $prefix/lib/libarpack* $prefix/include/arpack-ng $prefix/lib/cmake/arpack* $prefix/lib/pkgconfig/*arpack*
+			shift;;
 		static)
 			static=yes
 			shift;;
@@ -43,9 +44,9 @@ case "$which" in
 		exit -1
 esac
 if [ $static = yes ]; then
-	CMAKE_FLAGS=-DBUILD_SHARED_LIBS=ON
+	ARPACK_CMAKE_FLAGS=-DBUILD_SHARED_LIBS=OFF
 else
-	CMAKE_FLAGS=-DBUILD_SHARED_LIBS=OFF
+	ARPACK_CMAKE_FLAGS=-DBUILD_SHARED_LIBS=ON
 fi
 arpack_build=`pwd`/build/$arpack
 arpack_source=`pwd`/source/$arpack
@@ -56,7 +57,7 @@ if [ ! -d $arpack_source ]; then
 	git checkout --track origin/$branch
 fi
 
-if [ ! -d $prefix/lib ]; then
+if [ ! -d $prefix/include/boost* ]; then
 	# This is needed to link to python on Debian
 	if [ "x" = "y" ] ; then
 		sudo apt-get update
@@ -79,7 +80,8 @@ if (rm -rf $arpack_build && \
 		mkdir -p $arpack_build && \
 		cd $arpack_build && \
 		cmake -S $arpack_source -B . -DCMAKE_INSTALL_PREFIX="$prefix"\
- 			  -G "$cmake_generator" -DICB=ON -DICBEXMM=ON -DPYTHON3=ON && \
+ 			  -G "$cmake_generator" -DICB=ON -DICBEXMM=ON -DPYTHON3=ON \
+			  $ARPACK_CMAKE_FLAGS && \
 		cmake --build . -j 6 && \
 		cmake --install .); then
 	echo Succeeded building Arpack-NG
@@ -95,7 +97,7 @@ if (cp $arpack_source/TESTS/icb_arpack_c.c cmake-test/ && \
 		mkdir -p $test_build && \
 		cmake -S cmake-test -B $test_build -G "$cmake_generator" \
 			  -D CMAKE_PREFIX_PATH="$prefix" && \
-		cmake --build $test_build); then
+		cmake --build $test_build --verbose); then
 	echo Succeeded building tests
 else
 	echo Failure building tests
