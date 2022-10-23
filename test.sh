@@ -1,14 +1,37 @@
 #!/bin/sh
 set -x
 branch="cmake"
-prefix=`pwd`/local
+root=`pwd`
+prefix=$root/local
 python=no
 which=new
 static=no
+eigen=no
+mpi=yes
+examples=no
+do_test=yes
+do_build=yes
+do_check=yes
 cmake_generator="Unix Makefiles"
 
 while [ -n "$1" ]; do
 	case $1 in
+		all)
+			echo *** RUNNING STATICALLY LINKED TESTS
+			if $0 clean static noeigen nopython check ; then
+				echo *** SUCCESS
+			else
+				echo *** FAILURE
+				exit 1
+			fi
+			echo *** RUNNING DYNAMICALLY LINKED TESTS
+			if $0 clean shared noeigen nopython check ; then
+				echo *** SUCCESS
+			else
+				echo *** FAILURE
+				exit 1
+			fi
+			;;
 		new)
 			which=new
 			shift;;
@@ -16,14 +39,38 @@ while [ -n "$1" ]; do
 			which=original
 			shift;;
 		clean)
-			rm -rf build/* cmake-test/*.{c,cpp,log} makedir-test/*.{c,cpp,log}
+			rm -rf build/{arpack-ng,cmake-test,boost*} cmake-test/*.{c,cpp,log} makedir-test/*.{c,cpp,log}
 			rm -rf $prefix/lib/libarpack* $prefix/include/arpack-ng $prefix/lib/cmake/arpack* $prefix/lib/pkgconfig/*arpack*
 			shift;;
 		static)
 			static=yes
 			shift;;
-		dynamic)
+		dynamic|shared)
 			static=no
+			shift;;
+		check)
+			do_check=yes
+			shift;;
+		nocheck)
+			do_check=no
+			shift;;
+		eigen)
+			eigen=yes
+			shift;;
+		noeigen)
+			eigen=no
+			shift;;
+		examples)
+			examples=yes
+			shift;;
+		noexamples)
+			examples=no
+			shift;;
+		mpi)
+			mpi=yes
+			shift;;
+		nompi)
+			mpi=no
 			shift;;
 		nopython)
 			python=no
@@ -31,9 +78,21 @@ while [ -n "$1" ]; do
 		python)
 			python=yes
 			shift;;
+		build)
+			do_build=yes
+			shift;;
+		nobuild)
+			do_build=no
+			shift;;
+		test)
+			do_test=yes
+			shift;;
+		notest)
+			do_test=no
+			shift;;
 		*)
 			echo Uknown option $1
-			exit -1;;
+			exit 1;;
 	esac
 done
 
@@ -48,12 +107,32 @@ case "$which" in
 		;;
 	*)
 		echo Do not know which branch to test: "$which"
-		exit -1
+		exit 1
 esac
+if [ $do_check = yes ]; then
+	ARPACK_CTEST="ctest ."
+else
+	ARPACK_CTEST="echo No test"
+fi
 if [ $static = yes ]; then
 	ARPACK_CMAKE_FLAGS=-DBUILD_SHARED_LIBS=OFF
 else
 	ARPACK_CMAKE_FLAGS=-DBUILD_SHARED_LIBS=ON
+fi
+if [ $examples = yes ]; then
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DEXAMPLES=ON"
+else
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DEXAMPLES=OFF"
+fi
+if [ $mpi = yes ]; then
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DMPI=ON"
+else
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DMPI=OFF"
+fi
+if [ $eigen = yes ]; then
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DICBEXMM=ON"
+else
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DICBEXMM=OFF"
 fi
 arpack_build=`pwd`/build/$arpack
 arpack_source=`pwd`/source/$arpack
@@ -65,9 +144,9 @@ if [ ! -d $arpack_source ]; then
 fi
 
 if [ $python = no ]; then
-	ARPACK_CMAKE_FLAGS=$ARPACK_CMAKE_FLAGS -DPYTHON3=OFF
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DPYTHON3=OFF"
 else
-	ARPACK_CMAKE_FLAGS=$ARPACK_CMAKE_FLAGS -DPYTHON3=ON
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DPYTHON3=ON"
 	if [ ! -d $prefix/include/boost* ]; then
 		# This is needed to link to python on Debian
 		if [ "x" = "y" ] ; then
@@ -88,48 +167,53 @@ else
 			else
 				echo Failed installing Boost
 				rm -rf build/boost_1_79*
-				exit -1
+				exit 1
 			fi
 		fi
 	fi
 fi
 
-if (rm -rf $arpack_build && \
-		mkdir -p $arpack_build && \
-		cd $arpack_build && \
-		cmake -S $arpack_source -B . -DCMAKE_INSTALL_PREFIX="$prefix"\
- 			  -G "$cmake_generator" -DICB=ON -DICBEXMM=ON \
-			  $ARPACK_CMAKE_FLAGS && \
-		cmake --build . -j 6 && \
-		cmake --install .); then
-	echo Succeeded building Arpack-NG
-else
-	echo Failure building Arpack-NG sources
-	exit -1
+if [ $do_build = yes ]; then
+	if (rm -rf "$arpack_build" && \
+			mkdir -p "$arpack_build" && \
+			cd "$arpack_build" && \
+			cmake -S "$arpack_source" -B . -DCMAKE_INSTALL_PREFIX="$prefix"\
+ 				  -G "$cmake_generator" -DICB=ON -DICBEXMM=ON \
+				  $ARPACK_CMAKE_FLAGS && \
+			cmake --build . && \
+			cmake --install . && $ARPACK_CTEST) 2>&1; then
+		echo Succeeded building Arpack-NG
+	else
+		echo Failure building Arpack-NG sources
+		exit 1
+	fi
 fi
 
-test_build=`pwd`/build/cmake-test
-if (cp $arpack_source/TESTS/icb_arpack_c.c cmake-test/ && \
-		cp $arpack_source/TESTS/icb_arpack_cpp.cpp cmake-test/ && \
-		rm -rf $test_build && \
-		mkdir -p $test_build && \
-		cmake -S cmake-test -B $test_build -G "$cmake_generator" \
-			  -D CMAKE_PREFIX_PATH="$prefix" && \
-		cmake --build $test_build --verbose); then
-	echo Succeeded building tests
-else
-	echo Failure building tests
-	exit -1
-fi
-if $test_build/icb_arpack_c 2>&1 >$test_build/icb_arpack_c.log; then
-	echo Succeeded icb_arpack_c
-else
-	echo Failed icb_arpack_c
-	exit -1
-fi
-if $test_build/icb_arpack_cpp 2>&1 >$test_build/icb_arpack_cpp.log; then
-	echo Succeeded icb_arpack_cpp
-else
-	echo Failed icb_arpack_cpp
-	exit -1
+if [ $do_test = yes ]; then
+	test_build=`pwd`/build/cmake-test
+	for file in icb_arpack_c.c icb_arpack_cpp.cpp; do
+		cat "$arpack_source/TESTS/$file" | sed -e 's,#include ",#include "arpack-ng/,g' > cmake-test/$file
+	done
+	if (rm -rf "$test_build" && \
+			mkdir -p "$test_build" && \
+			cmake -S cmake-test -B "$test_build" -G "$cmake_generator" \
+				  -D CMAKE_PREFIX_PATH="$prefix" $ARPACK_TEST_CMAKE_FLAGS && \
+			cmake --build "$test_build" --verbose) 2>&1; then
+		echo Succeeded building tests
+	else
+		echo Failure building tests
+		exit 1
+	fi
+	if $test_build/icb_arpack_c 2>&1 >"$test_build/icb_arpack_c.log"; then
+		echo Succeeded icb_arpack_c
+	else
+		echo Failed icb_arpack_c
+		exit 1
+	fi
+	if $test_build/icb_arpack_cpp 2>&1 >"$test_build/icb_arpack_cpp.log"; then
+		echo Succeeded icb_arpack_cpp
+	else
+		echo Failed icb_arpack_cpp
+		exit 1
+	fi
 fi
