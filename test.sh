@@ -4,7 +4,7 @@ branch="cmake"
 root=`pwd`
 prefix=$root/local
 python=no
-which=new
+branch=cmake
 static=no
 eigen=no
 mpi=yes
@@ -13,6 +13,8 @@ do_test=yes
 do_build=yes
 do_check=yes
 cmake_generator="Unix Makefiles"
+arpack_git="https://github.com/juanjosegarciaripoll/arpack-ng.git"
+parallel=no
 
 while [ -n "$1" ]; do
 	case $1 in
@@ -32,11 +34,11 @@ while [ -n "$1" ]; do
 				exit 1
 			fi
 			;;
-		new)
-			which=new
+		new|cmake)
+			branch=cmake
 			shift;;
-		original)
-			which=original
+		master)
+			branch=master
 			shift;;
 		clean)
 			rm -rf build/{arpack-ng,cmake-test,boost*} cmake-test/*.{c,cpp,log} makedir-test/*.{c,cpp,log}
@@ -84,6 +86,12 @@ while [ -n "$1" ]; do
 		nobuild)
 			do_build=no
 			shift;;
+		parallel)
+			shift
+			if [ "$1" -eq "$1" ]; then
+				parallel=$1
+				shift
+			fi;;
 		test)
 			do_test=yes
 			shift;;
@@ -96,28 +104,18 @@ while [ -n "$1" ]; do
 	esac
 done
 
-case "$which" in
-	new)
-		arpack="arpack-ng"
-		branch=cmake
-		;;
-	original)
-		arpack="arpack-ng-original"
-		branch=master
-		;;
-	*)
-		echo Do not know which branch to test: "$which"
-		exit 1
-esac
 if [ $do_check = yes ]; then
-	ARPACK_CTEST="ctest ."
+	ARPACK_CTEST="ctest --output-on-failure"
 else
 	ARPACK_CTEST="echo No test"
 fi
+if [ $parallel != no ]; then
+	ARPACK_CMAKE_JOBS="-j $parallel"
+fi
 if [ $static = yes ]; then
-	ARPACK_CMAKE_FLAGS=-DBUILD_SHARED_LIBS=OFF
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DBUILD_SHARED_LIBS=OFF"
 else
-	ARPACK_CMAKE_FLAGS=-DBUILD_SHARED_LIBS=ON
+	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DBUILD_SHARED_LIBS=ON"
 fi
 if [ $examples = yes ]; then
 	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DEXAMPLES=ON"
@@ -134,13 +132,20 @@ if [ $eigen = yes ]; then
 else
 	ARPACK_CMAKE_FLAGS="$ARPACK_CMAKE_FLAGS -DICBEXMM=OFF"
 fi
+arpack=arpack-ng-$branch
 arpack_build=`pwd`/build/$arpack
 arpack_source=`pwd`/source/$arpack
 
 if [ ! -d $arpack_source ]; then
 	test -d source || mkdir source
-	git clone https://github.com/juanjosegarciaripoll/arpack-ng.git $arpack_source
-	git checkout --track origin/$branch
+	if (git clone $arpack_git $arpack_source && \
+		cd $arpack_source && \
+		git checkout -b $branch --track origin/$branch); then
+		echo Checked out repository
+	else
+		echo Failure checking out repository
+		exit 1
+	fi
 fi
 
 if [ $python = no ]; then
@@ -180,8 +185,8 @@ if [ $do_build = yes ]; then
 			cmake -S "$arpack_source" -B . -DCMAKE_INSTALL_PREFIX="$prefix"\
  				  -G "$cmake_generator" -DICB=ON -DICBEXMM=ON \
 				  $ARPACK_CMAKE_FLAGS && \
-			cmake --build . && \
-			cmake --install . && $ARPACK_CTEST) 2>&1; then
+			cmake --build . $ARPACK_CMAKE_JOBS && \
+			cmake --install . && $ARPACK_CTEST $ARPACK_CMAKE_JOBS) 2>&1; then
 		echo Succeeded building Arpack-NG
 	else
 		echo Failure building Arpack-NG sources
@@ -192,7 +197,8 @@ fi
 if [ $do_test = yes ]; then
 	test_build=`pwd`/build/cmake-test
 	for file in icb_arpack_c.c icb_arpack_cpp.cpp; do
-		cat "$arpack_source/TESTS/$file" | sed -e 's,#include ",#include "arpack-ng/,g' > cmake-test/$file
+		#cat "$arpack_source/TESTS/$file" | sed -e 's,#include ",#include "arpack-ng/,g' > cmake-test/$file
+		cp "$arpack_source/TESTS/$file" "cmake-test/$file"
 	done
 	if (rm -rf "$test_build" && \
 			mkdir -p "$test_build" && \
